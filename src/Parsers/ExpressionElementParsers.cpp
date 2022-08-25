@@ -1066,7 +1066,7 @@ bool ParserFunction::parseImpl(Pos & pos, ASTPtr & node, Expected & expected)
     return true;
 }
 
-static bool parseQueryAgrumentSelect(IParser::Pos & pos, ASTPtr & query, Expected & expected)
+static bool parseQueryArgumentSelect(IParser::Pos & pos, ASTPtr & query, Expected & expected)
 {
     bool maybe_an_subquery = pos->type == TokenType::OpeningRoundBracket;
 
@@ -1097,10 +1097,10 @@ bool ParserTableFunctionOverQuery::parseImpl(Pos & pos, ASTPtr & node, Expected 
     ++pos;
 
     ASTPtr query;
-    bool is_parsed = parseQueryAgrumentSelect(pos, query, expected);
+    bool is_parsed = parseQueryArgumentSelect(pos, query, expected);
     if (!is_parsed && function_name == "view" && ParserExplainQuery().parse(pos, query, expected))
     {
-        /// Suppport view(EXPLAIN SELECT ...) syntax.
+        /// Support view(EXPLAIN SELECT ...) syntax.
         is_parsed = true;
         function_name = "viewExplain";
     }

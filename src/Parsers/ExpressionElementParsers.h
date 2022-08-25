@@ -162,7 +162,7 @@ protected:
     bool is_table_function;
 };
 
-// A special function parser for table functions that acceps query as its agrument (view, viewIfPermitted, explain, ...).
+// A special function parser for table functions that acceps query as its argument (view, viewIfPermitted, ...).
 // It parses an SELECT query as its argument and doesn't support getColumnName().
 class ParserTableFunctionOverQuery : public IParserBase
 {

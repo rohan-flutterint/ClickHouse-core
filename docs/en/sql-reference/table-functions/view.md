@@ -61,8 +61,25 @@ SELECT * FROM remote(`127.0.0.1`, view(SELECT a, b, c FROM table_name));
 SELECT * FROM cluster(`cluster_name`, view(SELECT a, b, c FROM table_name));
 ```
 
+Function `view` can be used to operate with the result of the `EXPLAIN SELECT` query.
+
+Query:
+
+``` sql
+SELECT * FROM view(EXPLAIN SELECT * FROM t1) WHERE explain like '%ReadFromStorage%';
+```
+
+Result:
+
+``` text
+┌─explain─────────────────────┐
+│   ReadFromStorage (TinyLog) │
+└─────────────────────────────┘
+```
+
 **See Also**
 
 -   [View Table Engine](https://clickhouse.com/docs/en/engines/table-engines/special/view/)
+-   [EXPLAIN](../statements/explain.md)
 
 [Original article](https://clickhouse.com/docs/en/sql-reference/table-functions/view/) <!--hide-->

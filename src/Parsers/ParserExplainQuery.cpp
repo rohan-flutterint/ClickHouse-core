@@ -67,8 +67,13 @@ bool ParserExplainQuery::parseImpl(Pos & pos, ASTPtr & node, Expected & expected
     ASTPtr query;
     if (kind == ASTExplainQuery::ExplainKind::ParsedAST)
     {
-        ParserQuery p(end, allow_settings_after_format_in_insert);
-        if (p.parse(pos, query, expected))
+        std::unique_ptr<IParserBase> parser;
+        if (select_only)
+            parser = std::make_unique<ParserSelectWithUnionQuery>();
+        else
+            parser = std::make_unique<ParserQuery>(end, allow_settings_after_format_in_insert);
+
+        if (parser->parse(pos, query, expected))
             explain_query->setExplainedQuery(std::move(query));
         else
             return false;
@@ -88,11 +93,20 @@ bool ParserExplainQuery::parseImpl(Pos & pos, ASTPtr & node, Expected & expected
     {
         /// Nothing to parse
     }
+    else if (select_only)
+    {
+        if (select_p.parse(pos, query, expected))
+            explain_query->setExplainedQuery(std::move(query));
+        else
+            return false;
+    }
     else if (select_p.parse(pos, query, expected) ||
         create_p.parse(pos, query, expected) ||
         insert_p.parse(pos, query, expected) ||
         system_p.parse(pos, query, expected))
+    {
         explain_query->setExplainedQuery(std::move(query));
+    }
     else
         return false;
 

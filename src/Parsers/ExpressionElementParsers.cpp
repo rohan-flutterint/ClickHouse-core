@@ -32,6 +32,7 @@
 #include <Parsers/parseIntervalKind.h>
 #include <Parsers/ExpressionListParsers.h>
 #include <Parsers/ParserSelectWithUnionQuery.h>
+#include <Parsers/ParserExplainQuery.h>
 #include <Parsers/ParserCase.h>
 
 #include <Parsers/ExpressionElementParsers.h>
@@ -834,7 +835,7 @@ bool ParserFunction::parseImpl(Pos & pos, ASTPtr & node, Expected & expected)
 
     if (is_table_function)
     {
-        if (ParserTableFunctionView().parse(pos, node, expected))
+        if (ParserTableFunctionOverQuery().parse(pos, node, expected))
             return true;
     }
 
@@ -1065,29 +1066,11 @@ bool ParserFunction::parseImpl(Pos & pos, ASTPtr & node, Expected & expected)
     return true;
 }
 
-bool ParserTableFunctionView::parseImpl(Pos & pos, ASTPtr & node, Expected & expected)
+static bool parseQueryAgrumentSelect(IParser::Pos & pos, ASTPtr & query, Expected & expected)
 {
-    ParserIdentifier id_parser;
-    ParserSelectWithUnionQuery select;
-
-    ASTPtr identifier;
-    ASTPtr query;
-
-    bool if_permitted = false;
-
-    if (ParserKeyword{"VIEWIFPERMITTED"}.ignore(pos, expected))
-        if_permitted = true;
-    else if (!ParserKeyword{"VIEW"}.ignore(pos, expected))
-        return false;
-
-    if (pos->type != TokenType::OpeningRoundBracket)
-        return false;
-
-    ++pos;
-
     bool maybe_an_subquery = pos->type == TokenType::OpeningRoundBracket;
 
-    if (!select.parse(pos, query, expected))
+    if (!ParserSelectWithUnionQuery().parse(pos, query, expected))
         return false;
 
     auto & select_ast = query->as<ASTSelectWithUnionQuery &>();
@@ -1096,9 +1079,37 @@ bool ParserTableFunctionView::parseImpl(Pos & pos, ASTPtr & node, Expected & exp
         // It's an subquery. Bail out.
         return false;
     }
+    return true;
+}
 
-    ASTPtr else_ast;
-    if (if_permitted)
+bool ParserTableFunctionOverQuery::parseImpl(Pos & pos, ASTPtr & node, Expected & expected)
+{
+    String function_name;
+    if (ParserKeyword{"VIEWIFPERMITTED"}.ignore(pos, expected))
+        function_name = "viewIfPermitted";
+    else if (ParserKeyword{"VIEW"}.ignore(pos, expected))
+        function_name = "view";
+    else
+        return false;
+
+    if (pos->type != TokenType::OpeningRoundBracket)
+        return false;
+    ++pos;
+
+    ASTPtr query;
+    bool is_parsed = parseQueryAgrumentSelect(pos, query, expected);
+    if (!is_parsed && function_name == "view" && ParserExplainQuery().parse(pos, query, expected))
+    {
+        /// Suppport view(EXPLAIN SELECT ...) syntax.
+        is_parsed = true;
+        function_name = "viewExplain";
+    }
+
+    if (!is_parsed)
+        return false;
+
+    ASTPtr else_ast = nullptr;
+    if (function_name == "viewIfPermitted")
     {
         if (!ParserKeyword{"ELSE"}.ignore(pos, expected))
             return false;
@@ -1109,20 +1120,13 @@ bool ParserTableFunctionView::parseImpl(Pos & pos, ASTPtr & node, Expected & exp
 
     if (pos->type != TokenType::ClosingRoundBracket)
         return false;
-
     ++pos;
 
-    auto expr_list = std::make_shared<ASTExpressionList>();
-    expr_list->children.push_back(query);
-    if (if_permitted)
-        expr_list->children.push_back(else_ast);
+    if (else_ast == nullptr)
+        node = makeASTFunction(function_name, query);
+    else
+        node = makeASTFunction(function_name, query, else_ast);
 
-    auto function_node = std::make_shared<ASTFunction>();
-    tryGetIdentifierNameInto(identifier, function_node->name);
-    function_node->name = if_permitted ? "viewIfPermitted" : "view";
-    function_node->arguments = expr_list;
-    function_node->children.push_back(function_node->arguments);
-    node = function_node;
     return true;
 }
 

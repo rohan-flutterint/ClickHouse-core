@@ -603,7 +603,7 @@ bool ParserLambdaExpression::parseImpl(Pos & pos, ASTPtr & node, Expected & expe
 
 bool ParserTableFunctionExpression::parseImpl(Pos & pos, ASTPtr & node, Expected & expected)
 {
-    if (ParserTableFunctionView().parse(pos, node, expected))
+    if (ParserTableFunctionOverQuery().parse(pos, node, expected))
         return true;
     ParserKeyword s_settings("SETTINGS");
     if (s_settings.ignore(pos, expected))

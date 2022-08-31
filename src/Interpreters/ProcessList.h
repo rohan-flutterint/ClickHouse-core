@@ -5,6 +5,8 @@
 #include <Interpreters/CancellationCode.h>
 #include <Interpreters/ClientInfo.h>
 #include <Interpreters/QueryPriorities.h>
+#include <Interpreters/TemporaryDataOnDisk.h>
+#include <Interpreters/Context.h>
 #include <QueryPipeline/BlockIO.h>
 #include <QueryPipeline/ExecutionSpeedLimits.h>
 #include <Storages/IStorage_fwd.h>
@@ -229,7 +231,7 @@ struct ProcessListForUserInfo
 /// Data about queries for one user.
 struct ProcessListForUser
 {
-    explicit ProcessListForUser(ProcessList * global_process_list);
+    explicit ProcessListForUser(ContextPtr global_context, ProcessList * global_process_list);
 
     /// query_id -> ProcessListElement(s). There can be multiple queries with the same query_id as long as all queries except one are cancelled.
     using QueryToElement = std::unordered_map<String, QueryStatus *>;
@@ -238,6 +240,8 @@ struct ProcessListForUser
     ProfileEvents::Counters user_performance_counters{VariableContext::User, &ProfileEvents::global_counters};
     /// Limit and counter for memory of all simultaneously running queries of single user.
     MemoryTracker user_memory_tracker{VariableContext::User};
+
+    TemporaryDataOnDiskPtr user_temp_data_on_disk;
 
     UserOvercommitTracker user_overcommit_tracker;
 
@@ -252,6 +256,7 @@ struct ProcessListForUser
     /// Clears network bandwidth Throttler, so it will not count periods of inactivity.
     void resetTrackers()
     {
+        /// TODO: should we drop user_temp_data_on_disk here?
         user_memory_tracker.reset();
         if (user_throttler)
             user_throttler.reset();

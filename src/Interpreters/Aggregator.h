@@ -29,6 +29,7 @@
 #include <Interpreters/AggregateDescription.h>
 #include <Interpreters/AggregationCommon.h>
 #include <Interpreters/JIT/compileFunction.h>
+#include <Interpreters/TemporaryDataOnDisk.h>
 
 #include <Columns/ColumnString.h>
 #include <Columns/ColumnFixedString.h>
@@ -1071,7 +1072,7 @@ public:
 
     struct TemporaryFiles
     {
-        std::vector<TemporaryFileStreamPtr> tmp_streams;
+        std::vector<TemporaryFileStreamHolder> tmp_streams;
         mutable std::mutex mutex;
 
         bool empty() const

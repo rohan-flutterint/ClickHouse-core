@@ -1067,25 +1067,21 @@ public:
     /// For external aggregation.
     void writeToTemporaryFile(AggregatedDataVariants & data_variants, size_t max_temp_file_size = 0) const;
 
-    TemporaryFileOnDiskHolder createTempFile(size_t max_temp_file_size) const;
-
-    bool hasTemporaryFiles() const { return !temporary_files.empty(); }
+    bool hasTemporaryData() const { return !tmp_data.getStreams().empty(); }
 
     struct TemporaryFiles
     {
-        std::vector<TemporaryFileOnDiskHolder> files;
-        size_t sum_size_uncompressed = 0;
-        size_t sum_size_compressed = 0;
+        std::vector<TemporaryFileStreamPtr> tmp_streams;
         mutable std::mutex mutex;
 
         bool empty() const
         {
             std::lock_guard lock(mutex);
-            return files.empty();
+            return tmp_streams.empty();
         }
     };
 
-    const TemporaryFiles & getTemporaryFiles() const { return temporary_files; }
+    const TemporaryDataOnDisk & getTemporaryData() const { return tmp_data; }
 
     /// Get data structure of the result.
     Block getHeader(bool final) const;
@@ -1144,7 +1140,7 @@ private:
     Poco::Logger * log = &Poco::Logger::get("Aggregator");
 
     /// For external aggregation.
-    mutable TemporaryFiles temporary_files;
+    mutable TemporaryDataOnDisk tmp_data;
 
 #if USE_EMBEDDED_COMPILER
     std::shared_ptr<CompiledAggregateFunctionsHolder> compiled_aggregate_functions_holder;

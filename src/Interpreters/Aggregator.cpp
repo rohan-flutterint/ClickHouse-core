@@ -56,6 +56,20 @@ namespace CurrentMetrics
     extern const Metric TemporaryFilesForAggregation;
 }
 
+namespace DB
+{
+
+namespace ErrorCodes
+{
+    extern const int UNKNOWN_AGGREGATED_DATA_VARIANT;
+    extern const int TOO_MANY_ROWS;
+    extern const int EMPTY_DATA_PASSED;
+    extern const int CANNOT_MERGE_DIFFERENT_AGGREGATED_DATA_VARIANTS;
+    extern const int LOGICAL_ERROR;
+}
+
+}
+
 namespace
 {
 /** Collects observed HashMap-s sizes to avoid redundant intermediate resizes.
@@ -287,17 +301,6 @@ DB::ColumnNumbers calculateKeysPositions(const DB::Block & header, const DB::Agg
 
 namespace DB
 {
-
-namespace ErrorCodes
-{
-    extern const int UNKNOWN_AGGREGATED_DATA_VARIANT;
-    extern const int NOT_ENOUGH_SPACE;
-    extern const int TOO_MANY_ROWS;
-    extern const int EMPTY_DATA_PASSED;
-    extern const int CANNOT_MERGE_DIFFERENT_AGGREGATED_DATA_VARIANTS;
-    extern const int LOGICAL_ERROR;
-}
-
 
 AggregatedDataVariants::~AggregatedDataVariants()
 {
@@ -541,7 +544,7 @@ public:
 
 Aggregator::Aggregator(const Block & header_, const Params & params_)
     : header(header_), keys_positions(calculateKeysPositions(header, params_)), params(params_)
-    , blocks_on_disk(params.tmp_volume, getHeader(false))
+    , tmp_data(std::make_unique<TemporaryDataOnDisk>(params.tmp_data, 0))
 {
     /// Use query-level memory tracker
     if (auto * memory_tracker_child = CurrentThread::getMemoryTracker())
@@ -1491,19 +1494,22 @@ bool Aggregator::executeOnBlock(Columns columns,
 
 void Aggregator::writeToTemporaryFile(AggregatedDataVariants & data_variants, size_t max_temp_file_size) const
 {
+    if (!tmp_data)
+        throw Exception("Cannot write to temporary file because temporary file is not initialized", ErrorCodes::LOGICAL_ERROR);
+
     Stopwatch watch;
     size_t rows = data_variants.size();
 
-    auto out_stream = tmp_data.createStream(CurrentMetrics::TemporaryFilesForAggregation, max_temp_file_size);
+    auto & out_stream = tmp_data->createStream(getHeader(false), CurrentMetrics::TemporaryFilesForAggregation, max_temp_file_size);
     ProfileEvents::increment(ProfileEvents::ExternalAggregationWritePart);
 
-    LOG_DEBUG(log, "Writing part of aggregation data into temporary file {}", out_stream->path());
+    LOG_DEBUG(log, "Writing part of aggregation data into temporary file {}", out_stream.path());
 
     /// Flush only two-level data and possibly overflow data.
 
 #define M(NAME) \
     else if (data_variants.type == AggregatedDataVariants::Type::NAME) \
-        writeToTemporaryFileImpl(data_variants, *data_variants.NAME, *out_stream);
+        writeToTemporaryFileImpl(data_variants, *data_variants.NAME, out_stream);
 
     if (false) {} // NOLINT
     APPLY_FOR_VARIANTS_TWO_LEVEL(M)
@@ -1524,26 +1530,28 @@ void Aggregator::writeToTemporaryFile(AggregatedDataVariants & data_variants, si
 
     auto stat = out_stream.finishWriting();
 
-    ProfileEvents::increment(ProfileEvents::ExternalAggregationCompressedBytes, stat.compressed_bytes);
-    ProfileEvents::increment(ProfileEvents::ExternalAggregationUncompressedBytes, stat.uncompressed_bytes);
-    ProfileEvents::increment(ProfileEvents::ExternalProcessingCompressedBytesTotal, stat.compressed_bytes);
-    ProfileEvents::increment(ProfileEvents::ExternalProcessingUncompressedBytesTotal, stat.uncompressed_bytes);
+    ProfileEvents::increment(ProfileEvents::ExternalAggregationCompressedBytes, stat.compressed_size);
+    ProfileEvents::increment(ProfileEvents::ExternalAggregationUncompressedBytes, stat.uncompressed_size);
+    ProfileEvents::increment(ProfileEvents::ExternalProcessingCompressedBytesTotal, stat.compressed_size);
+    ProfileEvents::increment(ProfileEvents::ExternalProcessingUncompressedBytesTotal, stat.uncompressed_size);
 
     double elapsed_seconds = watch.elapsedSeconds();
+    double compressed_size = stat.compressed_size;
+    double uncompressed_size = stat.uncompressed_size;
     LOG_DEBUG(log,
         "Written part in {:.3f} sec., {} rows, {} uncompressed, {} compressed,"
         " {:.3f} uncompressed bytes per row, {:.3f} compressed bytes per row, compression rate: {:.3f}"
         " ({:.3f} rows/sec., {}/sec. uncompressed, {}/sec. compressed)",
         elapsed_seconds,
         rows,
-        ReadableSize(stat.uncompressed_bytes),
-        ReadableSize(stat.compressed_bytes),
-        stat.uncompressed_bytes / rows,
-        stat.compressed_bytes / rows,
-        stat.uncompressed_bytes / stat.compressed_bytes,
+        ReadableSize(uncompressed_size),
+        ReadableSize(compressed_size),
+        uncompressed_size / rows,
+        compressed_size / rows,
+        uncompressed_size / compressed_size,
         rows / elapsed_seconds,
-        ReadableSize(stat.uncompressed_bytes / elapsed_seconds),
-        ReadableSize(stat.compressed_bytes / elapsed_seconds));
+        ReadableSize(uncompressed_size / elapsed_seconds),
+        ReadableSize(compressed_size / elapsed_seconds));
 }
 
 template <typename Method>

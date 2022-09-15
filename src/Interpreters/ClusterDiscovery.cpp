@@ -152,7 +152,7 @@ Strings ClusterDiscovery::getNodeNames(zkutil::ZooKeeperPtr & zk,
     auto watch_callback = [cluster_name, clusters_to_update=clusters_to_update](auto) { clusters_to_update->set(cluster_name); };
 
     Coordination::Stat stat;
-    Strings nodes = zk->getChildrenWatch(getShardsListPath(zk_root), &stat, set_callback ? watch_callback : Coordination::WatchCallback{});
+    Strings nodes = zk->getChildrenWatch(getShardsListPath(zk_root), &stat, /*watch_identifier*/nullptr, set_callback ? watch_callback : Coordination::WatchCallback{});
     if (version)
         *version = stat.cversion;
     return nodes;

@@ -4,6 +4,7 @@
   * We assume that we compare values that are not too far away.
   * For example, when we increment 0xFFFFFFFF, we get 0. So, 0xFFFFFFFF is less than 0.
   */
+#include "Common/ZooKeeper/IKeeper.h"
 class WrappingUInt32
 {
 public:
@@ -192,12 +193,12 @@ public:
                         }
                     }
                 };
-        if (zookeeper->tryGetWatch(discovery_path, _some_data, &stat, watch_callback))
+        if (zookeeper->tryGetWatch(discovery_path, _some_data, &stat, /*watch_identifier=*/nullptr, watch_callback))
         {
             discovery_zxid = LogicalClock(stat.mzxid);
             discovery_version = stat.version;
         }
-        if (zookeeper->tryGetWatch(clean_state_path, _some_data, &stat, watch_callback))
+        if (zookeeper->tryGetWatch(clean_state_path, _some_data, &stat, /*watch_identifier=*/nullptr, watch_callback))
         {
             clean_state_zxid = LogicalClock(stat.mzxid);
             clean_state_version = stat.version;

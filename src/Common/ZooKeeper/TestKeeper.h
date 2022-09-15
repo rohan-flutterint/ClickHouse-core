@@ -57,11 +57,13 @@ public:
     void exists(
             const String & path,
             ExistsCallback callback,
+            WatchIdentifier * watch_identifier,
             WatchCallback watch) override;
 
     void get(
             const String & path,
             GetCallback callback,
+            WatchIdentifier * watch_identifier,
             WatchCallback watch) override;
 
     void set(
@@ -74,6 +76,7 @@ public:
             const String & path,
             ListRequestType list_request_type,
             ListCallback callback,
+            WatchIdentifier * watch_identifier,
             WatchCallback watch) override;
 
     void check(
@@ -88,6 +91,8 @@ public:
     void multi(
             const Requests & requests,
             MultiCallback callback) override;
+
+    void removeWatch(const WatchIdentifier * watch_identifier) override;
 
     void finalize(const String & reason) override;
 
@@ -108,8 +113,8 @@ public:
 
     using Container = std::map<std::string, Node>;
 
-    using WatchCallbacks = std::vector<WatchCallback>;
-    using Watches = std::map<String /* path, relative of root_path */, WatchCallbacks>;
+    using WatchCallbacks = std::map<UInt64, WatchCallback>;
+    using Watches = std::map<String /* path, relative of root_path */, std::set<UInt64>>;
 
 private:
     using clock = std::chrono::steady_clock;
@@ -118,6 +123,7 @@ private:
     {
         TestKeeperRequestPtr request;
         ResponseCallback callback;
+        WatchIdentifier watch_identifier;
         WatchCallback watch;
         clock::time_point time;
     };
@@ -131,8 +137,13 @@ private:
 
     int64_t zxid = 0;
 
+    WatchCallbacks watch_callbacks;
     Watches watches;
+    WatchCallbacks list_watch_callbacks;
     Watches list_watches;   /// Watches for 'list' request (watches on children).
+    std::mutex watches_mutex;
+
+    std::atomic_size_t watch_id_generator;
 
     using RequestsQueue = ConcurrentBoundedQueue<RequestInfo>;
     RequestsQueue requests_queue{1};
@@ -146,4 +157,3 @@ private:
 };
 
 }
-

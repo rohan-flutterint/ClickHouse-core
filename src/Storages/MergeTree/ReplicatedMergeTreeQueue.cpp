@@ -587,7 +587,7 @@ int32_t ReplicatedMergeTreeQueue::pullLogsToQueue(zkutil::ZooKeeperPtr zookeeper
     Coordination::Stat stat;
     zookeeper->get(fs::path(zookeeper_path) / "log", &stat);
 
-    Strings log_entries = zookeeper->getChildrenWatch(fs::path(zookeeper_path) / "log", nullptr, watch_callback);
+    Strings log_entries = zookeeper->getChildrenWatch(fs::path(zookeeper_path) / "log", nullptr, /*watch_identifier*/nullptr, watch_callback);
 
     /// We update mutations after we have loaded the list of log entries, but before we insert them
     /// in the queue.
@@ -760,8 +760,7 @@ Names getPartNamesToMutate(
 void ReplicatedMergeTreeQueue::updateMutations(zkutil::ZooKeeperPtr zookeeper, Coordination::WatchCallback watch_callback)
 {
     std::lock_guard lock(update_mutations_mutex);
-
-    Strings entries_in_zk = zookeeper->getChildrenWatch(fs::path(zookeeper_path) / "mutations", nullptr, watch_callback);
+    Strings entries_in_zk = zookeeper->getChildrenWatch(fs::path(zookeeper_path) / "mutations", nullptr, /*watch_identifier*/nullptr, watch_callback);
     StringSet entries_in_zk_set(entries_in_zk.begin(), entries_in_zk.end());
 
     /// Compare with the local state, delete obsolete entries and determine which new entries to load.

@@ -1,4 +1,5 @@
 #include "ZooKeeperNodeCache.h"
+#include "Common/ZooKeeper/IKeeper.h"
 
 namespace DB
 {
@@ -82,7 +83,7 @@ ZooKeeperNodeCache::ZNode ZooKeeperNodeCache::get(const std::string & path, Coor
 
     ZNode result;
 
-    result.exists = zookeeper->tryGetWatch(path, result.contents, &result.stat, watch_callback);
+    result.exists = zookeeper->tryGetWatch(path, result.contents, &result.stat, /*watch_identifier*/nullptr, watch_callback);
     if (result.exists)
     {
         path_to_cached_znode.emplace(path, result);
@@ -91,7 +92,7 @@ ZooKeeperNodeCache::ZNode ZooKeeperNodeCache::get(const std::string & path, Coor
 
     /// Node doesn't exist. We must set a watch on node creation (because it wasn't set by tryGetWatch).
 
-    result.exists = zookeeper->existsWatch(path, &result.stat, watch_callback);
+    result.exists = zookeeper->existsWatch(path, &result.stat, /*watch_identifier*/nullptr, watch_callback);
     if (!result.exists)
     {
         path_to_cached_znode.emplace(path, result);

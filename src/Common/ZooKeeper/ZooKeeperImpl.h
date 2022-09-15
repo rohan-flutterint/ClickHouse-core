@@ -147,11 +147,13 @@ public:
     void exists(
         const String & path,
         ExistsCallback callback,
+        WatchIdentifier * watch_identifier,
         WatchCallback watch) override;
 
     void get(
         const String & path,
         GetCallback callback,
+        WatchIdentifier * watch_identifier,
         WatchCallback watch) override;
 
     void set(
@@ -164,6 +166,7 @@ public:
         const String & path,
         ListRequestType list_request_type,
         ListCallback callback,
+        WatchIdentifier * watch_identifier,
         WatchCallback watch) override;
 
     void check(
@@ -178,6 +181,8 @@ public:
     void multi(
         const Requests & requests,
         MultiCallback callback) override;
+
+    void removeWatch(const WatchIdentifier * watch_identifier) override;
 
     DB::KeeperApiVersion getApiVersion() override;
 
@@ -224,6 +229,7 @@ private:
     {
         ZooKeeperRequestPtr request;
         ResponseCallback callback;
+        WatchIdentifier watch_identifier;
         WatchCallback watch;
         clock::time_point time;
     };
@@ -238,10 +244,12 @@ private:
     Operations operations TSA_GUARDED_BY(operations_mutex);
     std::mutex operations_mutex;
 
-    using WatchCallbacks = std::vector<WatchCallback>;
-    using Watches = std::map<String /* path, relative of root_path */, WatchCallbacks>;
+    using WatchCallbacks = std::map<UInt64, WatchCallback>;
+    using Watches = std::map<String /* path, relative of root_path */, std::set<UInt64>>;
 
+    WatchCallbacks watch_callbacks TSA_GUARDED_BY(watches_mutex);
     Watches watches TSA_GUARDED_BY(watches_mutex);
+    std::atomic_size_t watch_id_generator;
     std::mutex watches_mutex;
 
     ThreadFromGlobalPool send_thread;

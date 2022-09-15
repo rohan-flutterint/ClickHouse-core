@@ -154,6 +154,12 @@ struct WatchResponse : virtual Response
     size_t bytesSize() const override { return path.size() + sizeof(type) + sizeof(state); }
 };
 
+struct WatchIdentifier
+{
+    String path;
+    UInt64 id{0};
+};
+
 using WatchCallback = std::function<void(const WatchResponse &)>;
 
 struct SetACLRequest : virtual Request
@@ -492,11 +498,13 @@ public:
     virtual void exists(
         const String & path,
         ExistsCallback callback,
+        WatchIdentifier * watch_identifier,
         WatchCallback watch) = 0;
 
     virtual void get(
         const String & path,
         GetCallback callback,
+        WatchIdentifier * watch_identifier,
         WatchCallback watch) = 0;
 
     virtual void set(
@@ -509,6 +517,7 @@ public:
         const String & path,
         ListRequestType list_request_type,
         ListCallback callback,
+        WatchIdentifier * watch_identifier,
         WatchCallback watch) = 0;
 
     virtual void check(
@@ -523,6 +532,8 @@ public:
     virtual void multi(
         const Requests & requests,
         MultiCallback callback) = 0;
+
+    virtual void removeWatch(const WatchIdentifier * watch_identifier) = 0;
 
     virtual DB::KeeperApiVersion getApiVersion() = 0;
 

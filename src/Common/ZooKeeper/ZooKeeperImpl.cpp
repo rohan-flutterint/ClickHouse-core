@@ -1,3 +1,5 @@
+#include <mutex>
+#include "Common/ZooKeeper/IKeeper.h"
 #include <Common/ZooKeeper/ZooKeeperCommon.h>
 #include <Common/ZooKeeper/ZooKeeperImpl.h>
 #include <Common/ZooKeeper/ZooKeeperIO.h>
@@ -744,11 +746,17 @@ void ZooKeeper::receiveEvent()
             }
             else
             {
-                for (auto & callback : it->second)
-                    if (callback)
-                        callback(watch_response);   /// NOTE We may process callbacks not under mutex.
+                for (const auto callback_id : it->second)
+                {
+                    assert(watch_callbacks.contains(callback_id));
+                    if (watch_callbacks[callback_id])
+                        watch_callbacks[callback_id](watch_response);   /// NOTE We may process callbacks not under mutex.
+                }
 
                 CurrentMetrics::sub(CurrentMetrics::ZooKeeperWatch, it->second.size());
+
+                for (const auto callback_id : it->second)
+                    watch_callbacks.erase(callback_id);
                 watches.erase(it);
             }
         };
@@ -814,7 +822,8 @@ void ZooKeeper::receiveEvent()
                 String req_path = request_info.request->getPath();
                 removeRootPath(req_path, args.chroot);
                 std::lock_guard lock(watches_mutex);
-                watches[req_path].emplace_back(std::move(request_info.watch));
+                watch_callbacks[request_info.watch_identifier.id] = std::move(request_info.watch);
+                watches[req_path].insert(request_info.watch_identifier.id);
             }
         }
 
@@ -965,14 +974,15 @@ void ZooKeeper::finalize(bool error_send, bool error_receive, const String & rea
                 response.state = EXPIRED_SESSION;
                 response.error = Error::ZSESSIONEXPIRED;
 
-                for (auto & callback : path_watches.second)
+                for (const auto callback_id : path_watches.second)
                 {
                     watch_callback_count += 1;
-                    if (callback)
+                    assert(watch_callbacks.contains(callback_id));
+                    if (watch_callbacks[callback_id])
                     {
                         try
                         {
-                            callback(response);
+                            watch_callbacks[callback_id](response);
                         }
                         catch (...)
                         {
@@ -983,6 +993,7 @@ void ZooKeeper::finalize(bool error_send, bool error_receive, const String & rea
             }
 
             CurrentMetrics::sub(CurrentMetrics::ZooKeeperWatch, watch_callback_count);
+            watch_callbacks.clear();
             watches.clear();
         }
 
@@ -1084,6 +1095,14 @@ KeeperApiVersion ZooKeeper::getApiVersion()
     return keeper_api_version;
 }
 
+void ZooKeeper::removeWatch(const WatchIdentifier * watch_identifier)
+{
+    std::lock_guard lock(watches_mutex);
+
+    watch_callbacks.erase(watch_identifier->id);
+    watches.erase(watch_identifier->path);
+}
+
 void ZooKeeper::initApiVersion()
 {
     auto promise = std::make_shared<std::promise<Coordination::GetResponse>>();
@@ -1094,7 +1113,7 @@ void ZooKeeper::initApiVersion()
         promise->set_value(response);
     };
 
-    get(keeper_api_version_path, std::move(callback), {});
+    get(keeper_api_version_path, std::move(callback), nullptr, {});
     if (future.wait_for(std::chrono::milliseconds(args.operation_timeout_ms)) != std::future_status::ready)
     {
         LOG_TRACE(log, "Failed to get API version: timeout");
@@ -1173,15 +1192,26 @@ void ZooKeeper::remove(
 void ZooKeeper::exists(
     const String & path,
     ExistsCallback callback,
+    WatchIdentifier * watch_identifier,
     WatchCallback watch)
 {
+    WatchIdentifier identifier
+    {
+        .path = path,
+        .id = watch_id_generator.fetch_add(1)
+    };
+
     ZooKeeperExistsRequest request;
     request.path = path;
 
     RequestInfo request_info;
     request_info.request = std::make_shared<ZooKeeperExistsRequest>(std::move(request));
     request_info.callback = [callback](const Response & response) { callback(dynamic_cast<const ExistsResponse &>(response)); };
+    request_info.watch_identifier = identifier;
     request_info.watch = watch;
+
+    if (watch_identifier)
+        *watch_identifier = std::move(identifier);
 
     pushRequest(std::move(request_info));
     ProfileEvents::increment(ProfileEvents::ZooKeeperExists);
@@ -1191,15 +1221,26 @@ void ZooKeeper::exists(
 void ZooKeeper::get(
     const String & path,
     GetCallback callback,
+    WatchIdentifier * watch_identifier,
     WatchCallback watch)
 {
+    WatchIdentifier identifier
+    {
+        .path = path,
+        .id = watch_id_generator.fetch_add(1)
+    };
+
     ZooKeeperGetRequest request;
     request.path = path;
 
     RequestInfo request_info;
     request_info.request = std::make_shared<ZooKeeperGetRequest>(std::move(request));
     request_info.callback = [callback](const Response & response) { callback(dynamic_cast<const GetResponse &>(response)); };
+    request_info.watch_identifier = identifier;
     request_info.watch = watch;
+
+    if (watch_identifier)
+        *watch_identifier = std::move(identifier);
 
     pushRequest(std::move(request_info));
     ProfileEvents::increment(ProfileEvents::ZooKeeperGet);
@@ -1230,6 +1271,7 @@ void ZooKeeper::list(
     const String & path,
     ListRequestType list_request_type,
     ListCallback callback,
+    WatchIdentifier * watch_identifier,
     WatchCallback watch)
 {
     std::shared_ptr<ZooKeeperListRequest> request{nullptr};
@@ -1247,12 +1289,22 @@ void ZooKeeper::list(
         request = std::move(filtered_list_request);
     }
 
+    WatchIdentifier identifier
+    {
+        .path = path,
+        .id = watch_id_generator.fetch_add(1)
+    };
+
     request->path = path;
 
     RequestInfo request_info;
     request_info.callback = [callback](const Response & response) { callback(dynamic_cast<const ListResponse &>(response)); };
+    request_info.watch_identifier = identifier;
     request_info.watch = watch;
     request_info.request = std::move(request);
+
+    if (watch_identifier)
+        *watch_identifier = std::move(identifier);
 
     pushRequest(std::move(request_info));
     ProfileEvents::increment(ProfileEvents::ZooKeeperList);

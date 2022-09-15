@@ -10,6 +10,7 @@
 #include <Backups/IRestoreCoordination.h>
 #include <IO/ReadHelpers.h>
 #include <Interpreters/Context.h>
+#include "Common/ZooKeeper/IKeeper.h"
 #include <Common/ZooKeeper/KeeperException.h>
 #include <Common/ZooKeeper/Types.h>
 #include <Common/ZooKeeper/ZooKeeper.h>
@@ -435,7 +436,7 @@ void ReplicatedAccessStorage::refreshEntities(const zkutil::ZooKeeperPtr & zooke
         [[maybe_unused]] bool push_result = watched_queue->push(UUIDHelpers::Nil);
     };
     Coordination::Stat stat;
-    const auto entity_uuid_strs = zookeeper->getChildrenWatch(zookeeper_uuids_path, &stat, watch_entities_list);
+    const auto entity_uuid_strs = zookeeper->getChildrenWatch(zookeeper_uuids_path, &stat, /*watch_identifier=*/nullptr, watch_entities_list);
 
     std::unordered_set<UUID> entity_uuids;
     entity_uuids.reserve(entity_uuid_strs.size());
@@ -482,9 +483,10 @@ void ReplicatedAccessStorage::refreshEntityNoLock(const zkutil::ZooKeeperPtr & z
             [[maybe_unused]] bool push_result = watched_queue->push(id);
     };
     Coordination::Stat entity_stat;
+
     const String entity_path = zookeeper_path + "/uuid/" + toString(id);
     String entity_definition;
-    const bool exists = zookeeper->tryGetWatch(entity_path, entity_definition, &entity_stat, watch_entity);
+    const bool exists = zookeeper->tryGetWatch(entity_path, entity_definition, &entity_stat, /*watch_identifier*/nullptr, watch_entity);
     if (exists)
     {
         const AccessEntityPtr entity = deserializeAccessEntity(entity_definition, entity_path);

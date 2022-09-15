@@ -544,7 +544,7 @@ public:
 
 Aggregator::Aggregator(const Block & header_, const Params & params_)
     : header(header_), keys_positions(calculateKeysPositions(header, params_)), params(params_)
-    , tmp_data(params.tmp_data ? std::make_unique<TemporaryDataOnDisk>(params.tmp_data, 0) : nullptr)
+    , tmp_data(params.tmp_data_scope ? std::make_unique<TemporaryDataOnDisk>(params.tmp_data_scope) : nullptr)
 {
     /// Use query-level memory tracker
     if (auto * memory_tracker_child = CurrentThread::getMemoryTracker())

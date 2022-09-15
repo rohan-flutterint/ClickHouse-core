@@ -926,7 +926,7 @@ public:
         /// Return empty result when aggregating without keys on empty set.
         bool empty_result_for_aggregation_by_empty_set;
 
-        std::shared_ptr<TemporaryDataOnDisk> tmp_data;
+        TemporaryDataOnDiskScopePtr tmp_data_scope;
 
         /// Settings is used to determine cache size. No threads are created.
         size_t max_threads;
@@ -969,7 +969,7 @@ public:
             size_t group_by_two_level_threshold_bytes_,
             size_t max_bytes_before_external_group_by_,
             bool empty_result_for_aggregation_by_empty_set_,
-            std::shared_ptr<TemporaryDataOnDisk> tmp_data_,
+            TemporaryDataOnDiskScopePtr tmp_data_scope_,
             size_t max_threads_,
             size_t min_free_disk_space_,
             bool compile_aggregate_expressions_,
@@ -988,7 +988,7 @@ public:
             , group_by_two_level_threshold_bytes(group_by_two_level_threshold_bytes_)
             , max_bytes_before_external_group_by(max_bytes_before_external_group_by_)
             , empty_result_for_aggregation_by_empty_set(empty_result_for_aggregation_by_empty_set_)
-            , tmp_data(std::move(tmp_data_))
+            , tmp_data_scope(std::move(tmp_data_scope_))
             , max_threads(max_threads_)
             , min_free_disk_space(min_free_disk_space_)
             , compile_aggregate_expressions(compile_aggregate_expressions_)
@@ -1068,19 +1068,7 @@ public:
     /// For external aggregation.
     void writeToTemporaryFile(AggregatedDataVariants & data_variants, size_t max_temp_file_size = 0) const;
 
-    bool hasTemporaryData() const { return tmp_data && !tmp_data->getStreams().empty(); }
-
-    struct TemporaryFiles
-    {
-        std::vector<TemporaryFileStreamHolder> tmp_streams;
-        mutable std::mutex mutex;
-
-        bool empty() const
-        {
-            std::lock_guard lock(mutex);
-            return tmp_streams.empty();
-        }
-    };
+    bool hasTemporaryData() const { return tmp_data && !tmp_data->empty(); }
 
     TemporaryDataOnDisk & getTemporaryData() const { return *tmp_data; }
 
@@ -1141,7 +1129,7 @@ private:
     Poco::Logger * log = &Poco::Logger::get("Aggregator");
 
     /// For external aggregation.
-    TemporaryDataOnDiskPtr tmp_data;
+    mutable TemporaryDataOnDiskHolder tmp_data;
 
 #if USE_EMBEDDED_COMPILER
     std::shared_ptr<CompiledAggregateFunctionsHolder> compiled_aggregate_functions_holder;
